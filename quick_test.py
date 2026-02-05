@@ -4,7 +4,9 @@ Quick automated test of game playthrough
 """
 
 import sys
-sys.path.insert(0, '/home/runner/work/AncestralHabitation/AncestralHabitation')
+import os
+# Add the current directory to the path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from game_engine.game_state import GameState
 
