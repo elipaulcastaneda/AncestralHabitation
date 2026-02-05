@@ -23,13 +23,13 @@ class GameState:
         self.population = 50
         self.population_growth_rate = 0.02  # 2% per turn (year)
         
-        # Resources
+        # Resources - adjusted for better balance
         self.resources = {
-            'food': 500,
-            'wood': 100,
-            'stone': 50,
-            'clay': 30,
-            'hides': 20,
+            'food': 1000,  # More initial food
+            'wood': 200,
+            'stone': 100,
+            'clay': 50,
+            'hides': 40,
         }
         
         # Geography and settlements
@@ -79,10 +79,10 @@ class GameState:
         
     def _produce_resources(self):
         """Produce resources based on population and technologies"""
-        # Base gathering
-        gatherers = self.population // 3
-        self.resources['food'] += gatherers * 2
-        self.resources['wood'] += (self.population // 5) * 1
+        # Base gathering - increased production
+        gatherers = self.population // 2  # More people gather
+        self.resources['food'] += gatherers * 3  # More food per gatherer
+        self.resources['wood'] += (self.population // 4) * 2
         
         # Farming production
         if self.farms > 0:
@@ -91,13 +91,13 @@ class GameState:
         
         # Advanced gathering with technologies
         if 'advanced_foraging' in self.technologies:
-            self.resources['food'] += gatherers
+            self.resources['food'] += gatherers * 2
         
         if 'woodworking' in self.technologies:
             self.resources['wood'] += self.population // 10
             
         if 'pottery' in self.technologies:
-            self.resources['clay'] += self.population // 20
+            self.resources['clay'] += self.population // 15
             
     def _consume_resources(self):
         """Consume resources based on population needs"""
