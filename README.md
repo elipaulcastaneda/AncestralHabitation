@@ -2,6 +2,8 @@
 
 A strategy video game that simulates the building of a tribe and Neolithic-era culture, covering the period from 8000 BC to the start of the Iron Age (approximately 1200 BC).
 
+> **Note:** This PR has been updated to resolve git merge issues. The repository history has been fully restored.
+
 ## Overview
 
 Guide your tribe through the dawn of civilization! Make strategic decisions about:
