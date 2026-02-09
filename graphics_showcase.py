@@ -66,7 +66,7 @@ def showcase_graphics():
     
     # Show technology tree
     draw_header("Technology Tree")
-    draw_technology_tree(TECHNOLOGIES, game_state.technologies)
+    draw_technology_tree(TECHNOLOGIES, game_state.technologies, game_state.population)
     console.input("[bold cyan]Press Enter to continue...[/bold cyan]")
     
     # Show location details

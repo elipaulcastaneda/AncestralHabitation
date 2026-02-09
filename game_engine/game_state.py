@@ -5,6 +5,8 @@ Handles the overall game state including time, resources, population, and techno
 
 import random
 from typing import Dict, List, Set
+from game_engine.soil import get_geography_soil, calculate_soil_productivity, SOIL_TYPES
+from game_engine.geography import GEOGRAPHIES, get_current_season
 
 
 class GameState:
@@ -36,6 +38,11 @@ class GameState:
         self.geography_type = "river_valley"  # Starting location
         self.settlements = ["Main Camp"]
         
+        # Soil type for agriculture
+        self.soil_type = get_geography_soil(self.geography_type)
+        self.soil_quality = 1.0  # 0.0-1.0, degrades over time
+        self.has_irrigation = False
+        
         # Technologies discovered
         self.technologies: Set[str] = {
             'fire',
@@ -47,6 +54,9 @@ class GameState:
         # Farming and food production
         self.farms = 0
         self.farming_level = 0  # 0-5 representing development
+        
+        # Buildings
+        self.buildings: Dict[str, int] = {}  # building_key: count
         
         # Governance
         self.governance_type = "tribal_elder"  # Starting governance
@@ -84,9 +94,29 @@ class GameState:
         self.resources['food'] += gatherers * 3  # More food per gatherer
         self.resources['wood'] += (self.population // 4) * 2
         
-        # Farming production
+        # Farming production with soil productivity
         if self.farms > 0:
-            farm_output = self.farms * 50 * (1 + self.farming_level * 0.2)
+            # Get current season and climate
+            current_season = get_current_season(self.turn)
+            geography = GEOGRAPHIES[self.geography_type]
+            climate = geography.climate
+            irrigation_level = self.get_irrigation_level()
+            self.has_irrigation = irrigation_level > 0
+            
+            # Calculate soil productivity multiplier
+            productivity = calculate_soil_productivity(
+                self.soil_type,
+                irrigation_level,
+                climate,
+                current_season.food_modifier,
+                self.farming_level
+            )
+            
+            # Apply soil quality degradation
+            productivity *= self.soil_quality
+            
+            # Base farm output modified by soil productivity
+            farm_output = self.farms * 50 * productivity
             self.resources['food'] += int(farm_output)
         
         # Advanced gathering with technologies
@@ -148,6 +178,17 @@ class GameState:
         """Discover a new technology"""
         self.technologies.add(tech_name)
         self.culture_points += 10
+        
+        # Special effects for certain technologies
+        if tech_name == 'irrigation':
+            self.has_irrigation = True
+
+    def get_irrigation_level(self) -> int:
+        """Get irrigation level based on researched technologies"""
+        level = 0
+        if 'irrigation' in self.technologies:
+            level = 1
+        return level
         
     def get_year_display(self) -> str:
         """Get formatted year display"""

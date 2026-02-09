@@ -53,7 +53,49 @@ TERRAIN_MAPS = {
      ░░░ ░░░ ░░░ ░░░
     ░░░[🏛️]░░░
      ░░░ ░░░ ░░░ ░░░
-    """
+    """,
+    'desert_edge': """
+     ░░░ ░░░ ░░░ ░░░
+    ░░░[🏛️]░░░
+     ░░░ ░░░ ░░░ ░░░
+    """,
+    'fertile_crescent': """
+     ~~~  ~~~  ~~~  ~~~
+    ~~~ [🏛️]  ~~~  ~~~
+     ~~~  ~~~  ~~~  ~~~
+    """,
+    'neolithic_europe': """
+     ╔═══╦═══╦═══╦═══╗
+     ║ . ║[🏛️]║ . ║ . ║
+     ╠═══╬═══╬═══╬═══╣
+     ║ . ║ . ║ . ║ . ║
+     ╚═══╩═══╩═══╩═══╝
+    """,
+    'indus_precursors': """
+     ~~~  ~~~  ~~~  ~~~
+    ~~~ [🏛️]  ~~~  ~~~
+     ~~~  ~~~  ~~~  ~~~
+    """,
+    'mesoamerica': """
+     🌲 🌲 🌲 🌲 🌲
+    🌲🌲[🏛️]🌲🌲
+     🌲 🌲 🌲 🌲 🌲
+    """,
+    'andes': """
+     △ △ △ △ △
+    △△△[🏛️]△△
+     △ △ △ △ △
+    """,
+    'yellow_river': """
+     ~~~  ~~~  ~~~  ~~~
+    ~~~ [🏛️]  ~~~  ~~~
+     ~~~  ~~~  ~~~  ~~~
+    """,
+    'yangtze_river': """
+     ~~~  ~~~  ~~~  ~~~
+    ~~~ [🏛️]  ~~~  ~~~
+     ~~~  ~~~  ~~~  ~~~
+    """,
 }
 
 # Technology era colors
@@ -131,6 +173,7 @@ def draw_status_panel(game_state):
     """Draw a comprehensive status panel"""
     from game_engine.geography import GEOGRAPHIES, get_current_season
     from game_engine.governance import GOVERNANCE_TYPES
+    from game_engine.soil import SOIL_TYPES
     
     # Year display
     year_bc_ad = f"{abs(game_state.year)} BC" if game_state.year < 0 else f"{game_state.year} AD"
@@ -143,6 +186,15 @@ def draw_status_panel(game_state):
     
     # Governance info
     gov = GOVERNANCE_TYPES[game_state.governance_type]
+    
+    # Soil info
+    soil = SOIL_TYPES[game_state.soil_type]
+    soil_fertility = soil.base_fertility * game_state.soil_quality
+    irrigation_level = game_state.get_irrigation_level()
+    if irrigation_level > 0:
+        irrigation_status = f"✓ Irrigated (Level {irrigation_level})"
+    else:
+        irrigation_status = "✗ Not Irrigated"
     
     # Build status text
     status_text = f"""
@@ -157,6 +209,9 @@ def draw_status_panel(game_state):
 [bold green]Technologies:[/bold green] {len(game_state.technologies)} discovered
 [bold green]Culture Points:[/bold green] {game_state.culture_points}
 [bold green]Farms:[/bold green] {game_state.farms} (Level {game_state.farming_level})
+
+[bold magenta]Soil:[/bold magenta] {soil.name} (Fertility: {soil_fertility:.1f})
+[bold magenta]Irrigation:[/bold magenta] {irrigation_status}
 """
     
     if game_state.has_writing:
@@ -167,14 +222,15 @@ def draw_status_panel(game_state):
     console.print(panel)
 
 
-def draw_technology_tree(technologies_dict: dict, discovered: set):
+def draw_technology_tree(technologies_dict: dict, discovered: set, current_population: int = 0):
     """Draw an organized technology tree display"""
     table = Table(title="[bold cyan]Technology Tree[/bold cyan]", show_header=True,
                   header_style="bold cyan", border_style="cyan")
     
     table.add_column("Technology", style="dim", width=20)
     table.add_column("Era", style="dim", width=15)
-    table.add_column("Status", width=10)
+    table.add_column("Pop. Req.", width=10)
+    table.add_column("Status", width=12)
     
     # Organize by era
     by_era = {}
@@ -193,9 +249,17 @@ def draw_technology_tree(technologies_dict: dict, discovered: set):
             status = "✓ Discovered" if tech_name in discovered else "Available"
             status_color = "green" if tech_name in discovered else "yellow"
             
+            # Population requirement display
+            if tech.population_required > 0:
+                pop_color = "green" if current_population >= tech.population_required else "red"
+                pop_req = f"[{pop_color}]{tech.population_required}[/{pop_color}]"
+            else:
+                pop_req = "-"
+            
             table.add_row(
                 tech.name,
                 f"[{era_color}]{era.replace('_', ' ').title()}[/{era_color}]",
+                pop_req,
                 f"[{status_color}]{status}[/{status_color}]"
             )
     
@@ -207,7 +271,7 @@ def draw_action_menu():
     console.rule("[bold cyan]Available Actions[/bold cyan]", style="cyan")
     actions = [
         "[bold cyan]1.[/bold cyan] Advance to next year",
-        "[bold yellow]2.[/bold yellow] Build farm",
+        "[bold yellow]2.[/bold yellow] Construct building",
         "[bold green]3.[/bold green] Research technology",
         "[bold magenta]4.[/bold magenta] Migrate to new location",
         "[bold white]5.[/bold white] Change governance",
@@ -229,11 +293,11 @@ def draw_location_details(geography_type: str, geographies_dict: dict):
     if not geo:
         return
     
-    details = f"""
+        details = f"""
 [bold cyan]Location:[/bold cyan] {geo.name}
 [bold cyan]Climate:[/bold cyan] {geo.climate}
 [bold cyan]Description:[/bold cyan]
-  {geo.description}
+    {geo.description}
 
 [bold cyan]Resource Modifiers:[/bold cyan]
 """
@@ -241,6 +305,18 @@ def draw_location_details(geography_type: str, geographies_dict: dict):
     for resource, modifier in geo.resource_modifiers.items():
         modifier_color = "green" if modifier > 1.0 else "red" if modifier < 1.0 else "white"
         details += f"  {resource.capitalize()}: [{modifier_color}]{modifier:.1f}x[/{modifier_color}]\n"
+
+    if geo.domesticated:
+        domesticated_items = ", ".join(geo.domesticated)
+        details += f"\n[bold cyan]Domesticated:[/bold cyan]\n  {domesticated_items}\n"
+
+    if geo.proto_languages:
+        languages = ", ".join(geo.proto_languages)
+        details += f"\n[bold cyan]Proto-Languages:[/bold cyan]\n  {languages}\n"
+
+    if geo.ethnicities:
+        groups = ", ".join(geo.ethnicities)
+        details += f"\n[bold cyan]Ethnicities:[/bold cyan]\n  {groups}\n"
     
     details += f"\n[bold cyan]Migration Difficulty:[/bold cyan] {geo.migration_difficulty}/10"
     

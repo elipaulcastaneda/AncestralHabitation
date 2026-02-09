@@ -7,6 +7,7 @@ from game_engine.game_state import GameState
 from game_engine.technologies import get_available_technologies, TECHNOLOGIES
 from game_engine.geography import GEOGRAPHIES, get_current_season, calculate_migration_success
 from game_engine.governance import get_available_governance_types, GOVERNANCE_TYPES
+from game_engine.buildings import get_available_buildings, BUILDINGS
 from game_engine.graphics import (
     draw_game_title, draw_status_panel, draw_resource_bars, draw_action_menu,
     draw_terrain_map, draw_technology_tree, draw_location_details, draw_statistics,
@@ -87,40 +88,87 @@ class GameUI:
                                    "The Bronze Age has begun in other regions!\nYour tribe must advance or risk being left behind.")
         
     def build_farm(self):
-        """Build a new farm"""
-        cost = {'wood': 50, 'stone': 30, 'food': 100}
+        """Build structures (farms and other buildings)"""
+        available_buildings = get_available_buildings(
+            self.game_state.technologies,
+            self.game_state.population,
+            self.game_state.buildings
+        )
         
-        console.print("\n[bold cyan]Building a farm requires:[/bold cyan]")
-        for resource, amount in cost.items():
-            console.print(f"  {resource.capitalize()}: {amount}")
-        
-        if not self.game_state.can_afford(cost):
-            draw_error_message("You don't have enough resources!")
+        if not available_buildings:
+            draw_error_message("No buildings available to construct right now.")
+            draw_info_message("You may need more population or technologies.")
             return
         
-        # Need agriculture technology
-        if 'agriculture' not in self.game_state.technologies:
-            draw_error_message("You need to research Agriculture first!")
-            return
-        
-        confirm = console.input("\n[bold cyan]Build this farm? (y/n): [/bold cyan]").strip().lower()
-        if confirm == 'y':
-            self.game_state.spend_resources(cost)
-            self.game_state.farms += 1
-            draw_success_message(f"Farm built! You now have {self.game_state.farms} farm(s).")
+        console.print("\n[bold cyan]Available Buildings:[/bold cyan]")
+        for i, (building_key, building) in enumerate(available_buildings, 1):
+            current_count = self.game_state.buildings.get(building_key, 0)
+            if building_key == 'farm':
+                current_count = self.game_state.farms  # Legacy compatibility
             
-            # Improve farming level occasionally
-            if self.game_state.farms % 5 == 0 and self.game_state.farming_level < 5:
-                self.game_state.farming_level += 1
-                draw_success_message(f"Your farming techniques have improved! (Level {self.game_state.farming_level})")
+            cost_items = [f"{v} {k}" for k, v in building.cost.items()]
+            console.print(f"\n[bold cyan]{i}.[/bold cyan] {building.name} (Currently: {current_count})")
+            console.print(f"   {building.description}")
+            console.print(f"   [yellow]Cost: {', '.join(cost_items)}[/yellow]")
+            pop_color = "green" if self.game_state.population >= building.population_required else "red"
+            console.print(f"   [{pop_color}]Population Required: {building.population_required}[/{pop_color}]")
+            console.print(f"   [dim]Benefit: {building.benefit_description}[/dim]")
+        
+        choice = console.input("\n[bold cyan]Which building to construct? (number or 0 to cancel): [/bold cyan]").strip()
+        
+        try:
+            idx = int(choice) - 1
+            if idx < 0:
+                return
+            if idx >= len(available_buildings):
+                draw_error_message("Invalid choice.")
+                return
+            
+            building_key, building = available_buildings[idx]
+            
+            # Check population requirement
+            if self.game_state.population < building.population_required:
+                draw_error_message(f"You need a population of at least {building.population_required} to build this!")
+                draw_info_message(f"Current population: {self.game_state.population}")
+                return
+            
+            if not self.game_state.can_afford(building.cost):
+                draw_error_message("You don't have enough resources!")
+                return
+            
+            confirm = console.input(f"\n[bold cyan]Build {building.name}? (y/n): [/bold cyan]").strip().lower()
+            if confirm == 'y':
+                self.game_state.spend_resources(building.cost)
+                
+                # Update building count
+                if building_key == 'farm':
+                    self.game_state.farms += 1
+                    # Improve farming level occasionally
+                    if self.game_state.farms % 5 == 0 and self.game_state.farming_level < 5:
+                        self.game_state.farming_level += 1
+                        draw_success_message(f"Your farming techniques have improved! (Level {self.game_state.farming_level})")
+                else:
+                    self.game_state.buildings[building_key] = self.game_state.buildings.get(building_key, 0) + 1
+                
+                current_count = self.game_state.buildings.get(building_key, 0)
+                if building_key == 'farm':
+                    current_count = self.game_state.farms
+                    
+                draw_success_message(f"{building.name} built! You now have {current_count}.")
+                
+        except (ValueError, IndexError):
+            draw_error_message("Invalid choice.")
     
     def research_technology(self):
         """Research a new technology"""
-        available_techs = get_available_technologies(self.game_state.technologies)
+        available_techs = get_available_technologies(
+            self.game_state.technologies,
+            self.game_state.population
+        )
         
         if not available_techs:
             draw_error_message("No technologies available to research right now.")
-            draw_info_message("You may need to discover prerequisites first.")
+            draw_info_message("You may need to discover prerequisites first or grow your population.")
             return
         
         console.print("\n[bold cyan]Available Technologies:[/bold cyan]")
@@ -130,6 +178,9 @@ class GameUI:
             console.print(f"   {tech.description}")
             console.print(f"   [dim]Era: {tech.era.replace('_', ' ').title()}[/dim]")
             console.print(f"   [yellow]Cost: {', '.join(cost_items)}[/yellow]")
+            if tech.population_required > 0:
+                pop_color = "green" if self.game_state.population >= tech.population_required else "red"
+                console.print(f"   [{pop_color}]Population Required: {tech.population_required}[/{pop_color}]")
         
         choice = console.input("\n[bold cyan]Which technology to research? (number or 0 to cancel): [/bold cyan]").strip()
         
@@ -142,6 +193,12 @@ class GameUI:
                 return
             
             tech = available_techs[idx]
+            
+            # Check population requirement
+            if self.game_state.population < tech.population_required:
+                draw_error_message(f"You need a population of at least {tech.population_required} to research this!")
+                draw_info_message(f"Current population: {self.game_state.population}")
+                return
             
             if not self.game_state.can_afford(tech.cost):
                 draw_error_message("You don't have enough resources!")
@@ -173,6 +230,15 @@ class GameUI:
                 locations.append(key)
                 console.print(f"\n[bold cyan]{i}.[/bold cyan] {geo.name}")
                 console.print(f"   {geo.description}")
+                if geo.domesticated:
+                    domesticated_items = ", ".join(geo.domesticated)
+                    console.print(f"   [dim]Domesticated: {domesticated_items}[/dim]")
+                if geo.proto_languages:
+                    languages = ", ".join(geo.proto_languages)
+                    console.print(f"   [dim]Proto-Languages: {languages}[/dim]")
+                if geo.ethnicities:
+                    groups = ", ".join(geo.ethnicities)
+                    console.print(f"   [dim]Ethnicities: {groups}[/dim]")
                 console.print(f"   [dim]Climate: {geo.climate} | Migration Difficulty: {geo.migration_difficulty}/10[/dim]")
         
         choice = console.input("\n[bold cyan]Where to migrate? (number or 0 to cancel): [/bold cyan]").strip()
@@ -257,7 +323,7 @@ class GameUI:
     def view_technologies(self):
         """View discovered and available technologies"""
         console.print()
-        draw_technology_tree(TECHNOLOGIES, self.game_state.technologies)
+        draw_technology_tree(TECHNOLOGIES, self.game_state.technologies, self.game_state.population)
         
         console.input("\n[bold cyan]Press Enter to continue...[/bold cyan]")
     
@@ -274,6 +340,15 @@ class GameUI:
             if key != self.game_state.geography_type:
                 console.print(f"\n  [bold]{geo.name}[/bold]")
                 console.print(f"    {geo.description}")
+                if geo.domesticated:
+                    domesticated_items = ", ".join(geo.domesticated)
+                    console.print(f"    [dim]Domesticated: {domesticated_items}[/dim]")
+                if geo.proto_languages:
+                    languages = ", ".join(geo.proto_languages)
+                    console.print(f"    [dim]Proto-Languages: {languages}[/dim]")
+                if geo.ethnicities:
+                    groups = ", ".join(geo.ethnicities)
+                    console.print(f"    [dim]Ethnicities: {groups}[/dim]")
                 console.print(f"    [dim]Climate: {geo.climate} | Migration Difficulty: {geo.migration_difficulty}/10[/dim]")
         
         console.input("\n[bold cyan]Press Enter to continue...[/bold cyan]")
